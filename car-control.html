@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rover Control</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #151b23;
+    --grid: #1f2733;
+    --accent: #ff8c3c;
+    --accent-dim: #7a4a24;
+    --text: #e6edf3;
+    --text-dim: #6b7683;
+    --danger: #ff4d4d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 100% 32px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 32px 100%,
+      var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', ui-monospace, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 48px;
+  }
+  header {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid var(--grid);
+    padding-bottom: 12px;
+    margin-bottom: 20px;
+  }
+  h1 {
+    font-size: 15px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin: 0;
+    color: var(--accent);
+  }
+  #status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    display: inline-block;
+    margin-right: 6px;
+  }
+  #status-dot.ok { background: #3ddc84; box-shadow: 0 0 8px #3ddc84; }
+  #status-dot.err { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+  #status-text { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+
+  .panel {
+    width: 100%;
+    max-width: 420px;
+    background: var(--panel);
+    border: 1px solid var(--grid);
+    border-radius: 4px;
+    padding: 24px;
+  }
+
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 72px);
+    grid-template-rows: repeat(3, 72px);
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+  .dpad button {
+    background: #1a2129;
+    border: 1px solid var(--grid);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s, transform 0.05s;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  .dpad button:active, .dpad button.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    transform: scale(0.96);
+  }
+  .dpad .fwd { grid-column: 2; grid-row: 1; }
+  .dpad .left { grid-column: 1; grid-row: 2; }
+  .dpad .stop { grid-column: 2; grid-row: 2; color: var(--danger); border-color: var(--danger); }
+  .dpad .right { grid-column: 3; grid-row: 2; }
+  .dpad .back { grid-column: 2; grid-row: 3; }
+
+  .speed-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .speed-row label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    width: 60px;
+  }
+  input[type="range"] {
+    flex: 1;
+    accent-color: var(--accent);
+  }
+  #speed-val {
+    width: 34px;
+    text-align: right;
+    color: var(--accent);
+    font-size: 13px;
+  }
+
+  #log {
+    font-size: 11px;
+    color: var(--text-dim);
+    border-top: 1px solid var(--grid);
+    padding-top: 12px;
+    min-height: 16px;
+  }
+
+  .config-toggle {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: right;
+    width: 100%;
+    max-width: 420px;
+    margin-top: 12px;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .config {
+    width: 100%;
+    max-width: 420px;
+    background: var(--panel);
+    border: 1px solid var(--grid);
+    border-radius: 4px;
+    padding: 16px;
+    margin-top: 8px;
+    display: none;
+  }
+  .config.open { display: block; }
+  .config input {
+    width: 100%;
+    background: #0d1117;
+    border: 1px solid var(--grid);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 8px;
+    margin-bottom: 8px;
+    border-radius: 3px;
+  }
+  .config label {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .config button {
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    padding: 8px 16px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Rover // Ctl</h1>
+  <div><span id="status-dot"></span><span id="status-text">not configured</span></div>
+</header>
+
+<div class="panel">
+  <div class="dpad">
+    <button class="fwd" data-dir="forward">▲</button>
+    <button class="left" data-dir="left">◀</button>
+    <button class="stop" data-dir="stop">■</button>
+    <button class="right" data-dir="right">▶</button>
+    <button class="back" data-dir="backward">▼</button>
+  </div>
+
+  <div class="speed-row">
+    <label>Speed</label>
+    <input type="range" id="speed" min="0" max="255" value="150">
+    <span id="speed-val">150</span>
+  </div>
+
+  <div id="log">ready.</div>
+</div>
+
+<div class="config-toggle" id="config-toggle">configure connection ▾</div>
+<div class="config" id="config">
+  <label>Supabase Project URL</label>
+  <input type="text" id="cfg-url" placeholder="https://xxxxx.supabase.co">
+  <label>Anon / Publishable Key</label>
+  <input type="text" id="cfg-key" placeholder="eyJ... or sb_publishable_...">
+  <button id="cfg-save">Save</button>
+</div>
+
+<script>
+  const dot = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  const log = document.getElementById('log');
+  const speedSlider = document.getElementById('speed');
+  const speedVal = document.getElementById('speed-val');
+  const configPanel = document.getElementById('config');
+  const configToggle = document.getElementById('config-toggle');
+
+  let SUPA_URL = localStorage.getItem('rover_url') || '';
+  let SUPA_KEY = localStorage.getItem('rover_key') || '';
+
+  document.getElementById('cfg-url').value = SUPA_URL;
+  document.getElementById('cfg-key').value = SUPA_KEY;
+
+  configToggle.onclick = () => configPanel.classList.toggle('open');
+
+  document.getElementById('cfg-save').onclick = () => {
+    SUPA_URL = document.getElementById('cfg-url').value.trim().replace(/\/$/, '');
+    SUPA_KEY = document.getElementById('cfg-key').value.trim();
+    localStorage.setItem('rover_url', SUPA_URL);
+    localStorage.setItem('rover_key', SUPA_KEY);
+    configPanel.classList.remove('open');
+    setStatus('idle', 'configured');
+  };
+
+  function setStatus(state, text) {
+    dot.className = state === 'ok' ? 'ok' : state === 'err' ? 'err' : '';
+    statusText.textContent = text;
+  }
+
+  if (SUPA_URL && SUPA_KEY) setStatus('idle', 'configured');
+
+  speedSlider.oninput = () => { speedVal.textContent = speedSlider.value; };
+
+  async function sendCommand(direction) {
+    if (!SUPA_URL || !SUPA_KEY) {
+      log.textContent = 'set your Supabase URL + key first (below)';
+      configPanel.classList.add('open');
+      return;
+    }
+    log.textContent = `sending: ${direction}...`;
+    try {
+      const res = await fetch(`${SUPA_URL}/rest/v1/car_commands?id=eq.1`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPA_KEY,
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({
+          direction: direction,
+          speed: parseInt(speedSlider.value, 10),
+          updated_at: new Date().toISOString()
+        })
+      });
+      if (res.ok) {
+        setStatus('ok', 'connected');
+        log.textContent = `sent: ${direction} @ ${speedSlider.value}`;
+      } else {
+        setStatus('err', 'error ' + res.status);
+        log.textContent = `failed (${res.status}) — check URL/key/RLS policy`;
+      }
+    } catch (e) {
+      setStatus('err', 'unreachable');
+      log.textContent = 'network error — check the URL';
+    }
+  }
+
+  document.querySelectorAll('.dpad button').forEach(btn => {
+    btn.addEventListener('click', () => sendCommand(btn.dataset.dir));
+  });
+
+  // keyboard support: arrows to drive, space to stop
+  document.addEventListener('keydown', (e) => {
+    const map = { ArrowUp: 'forward', ArrowDown: 'backward', ArrowLeft: 'left', ArrowRight: 'right', ' ': 'stop' };
+    if (map[e.key]) { e.preventDefault(); sendCommand(map[e.key]); }
+  });
+</script>
+
+</body>
+</html>
