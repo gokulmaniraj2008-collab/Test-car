@@ -1,30 +1,38 @@
 /*
-  ESP32-CAM -> Local MJPEG Live Video Stream (fast, no cloud)
+  ESP32-CAM -> Supabase Live Feed
 
-  This runs a tiny web server directly on the ESP32-CAM that streams
-  live video (MJPEG) over your WiFi network. No Supabase, no uploads,
-  no delay — just point a browser at the camera's IP address.
+  Captures frames continuously and pushes each one to a Supabase table
+  (car_camera, single row id=1). The webpage holds a Realtime websocket
+  subscription to that row, so as soon as this board writes a new frame
+  Supabase pushes it straight to the browser — no polling, no local
+  network requirement. Frame rate depends on JPEG size + your WiFi/
+  internet round-trip, typically a few fps.
 
   Board: AI-Thinker ESP32-CAM
 
-  SETUP:
-  1. Fill in WIFI_SSID / WIFI_PASSWORD below
-  2. Flash this sketch (GPIO0 -> GND while flashing, remove after, RST)
-  3. Open Serial Monitor (115200 baud) - it will print the stream URL,
-     e.g.  http://192.168.1.42/stream
-  4. Open that URL in a browser (Chrome/Firefox on phone or PC), or
-     embed it in a webpage with:  <img src="http://<esp32-ip>/stream">
+  SETUP (run once, in Supabase SQL Editor):
+    See supabase_setup.sql in this project — creates the car_camera
+    table, RLS policies, and enables Realtime on it.
 
-  Must be on the SAME WiFi network as the ESP32-CAM to view it.
+  SETUP (this board):
+  1. Fill in WIFI_SSID / WIFI_PASSWORD / supabaseUrl / apiKey below
+     (same Supabase project + key as Esp32.ino)
+  2. Flash this sketch (GPIO0 -> GND while flashing, remove after, RST)
+  3. Open Serial Monitor (115200 baud) to confirm it's uploading frames
 */
 
 #include "esp_camera.h"
 #include <WiFi.h>
-#include "esp_http_server.h"
+#include <HTTPClient.h>
+#include "base64.h"
 
 // ---------- CONFIG ----------
 const char* WIFI_SSID     = "AGRIBOT_WIFI";
 const char* WIFI_PASSWORD = "12345678";
+
+// Same Supabase project + key as Esp32.ino
+const char* supabaseUrl = "https://hvnasippwadzygnaodpp.supabase.co/rest/v1/car_camera?id=eq.1";
+const char* apiKey      = "sb_publishable_ZFFW9ifODSHTwOPlOBWhqw_G8H7FACO";
 // -----------------------------
 
 // AI-Thinker ESP32-CAM pin map
@@ -44,76 +52,6 @@ const char* WIFI_PASSWORD = "12345678";
 #define VSYNC_GPIO_NUM    25
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
-
-#define PART_BOUNDARY "123456789000000000000987654321"
-static const char* STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
-static const char* STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
-static const char* STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
-
-httpd_handle_t stream_httpd = NULL;
-
-static esp_err_t stream_handler(httpd_req_t *req) {
-  camera_fb_t * fb = NULL;
-  esp_err_t res = ESP_OK;
-  size_t jpg_buf_len = 0;
-  uint8_t * jpg_buf = NULL;
-  char part_buf[64];
-
-  res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
-  if (res != ESP_OK) return res;
-
-  while (true) {
-    fb = esp_camera_fb_get();
-    if (!fb) {
-      Serial.println("Camera capture failed");
-      res = ESP_FAIL;
-    } else {
-      jpg_buf_len = fb->len;
-      jpg_buf = fb->buf;
-    }
-
-    if (res == ESP_OK) {
-      res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
-    }
-    if (res == ESP_OK) {
-      size_t hlen = snprintf(part_buf, 64, STREAM_PART, jpg_buf_len);
-      res = httpd_resp_send_chunk(req, part_buf, hlen);
-    }
-    if (res == ESP_OK) {
-      res = httpd_resp_send_chunk(req, (const char *)jpg_buf, jpg_buf_len);
-    }
-
-    if (fb) {
-      esp_camera_fb_return(fb);
-      fb = NULL;
-    }
-
-    if (res != ESP_OK) break;
-  }
-  return res;
-}
-
-static esp_err_t index_handler(httpd_req_t *req) {
-  const char* html =
-    "<html><body style='margin:0;background:#000;display:flex;justify-content:center;align-items:center;height:100vh;'>"
-    "<img src='/stream' style='max-width:100%;max-height:100%;'>"
-    "</body></html>";
-  httpd_resp_set_type(req, "text/html");
-  return httpd_resp_send(req, html, strlen(html));
-}
-
-void startCameraServer() {
-  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port = 80;
-
-  httpd_uri_t index_uri = { .uri = "/", .method = HTTP_GET, .handler = index_handler, .user_ctx = NULL };
-  httpd_uri_t stream_uri = { .uri = "/stream", .method = HTTP_GET, .handler = stream_handler, .user_ctx = NULL };
-
-  if (httpd_start(&stream_httpd, &config) == ESP_OK) {
-    httpd_register_uri_handler(stream_httpd, &index_uri);
-    httpd_register_uri_handler(stream_httpd, &stream_uri);
-  }
-}
 
 void initCamera() {
   camera_config_t config;
@@ -138,14 +76,15 @@ void initCamera() {
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
 
+  // Small frames = faster uploads = smoother "live" feel over the network.
   if (psramFound()) {
-    config.frame_size = FRAMESIZE_VGA;  // 640x480 - good balance of speed/quality
-    config.jpeg_quality = 12;
+    config.frame_size = FRAMESIZE_QVGA; // 320x240
+    config.jpeg_quality = 14;
     config.fb_count = 2;
-    config.grab_mode = CAMERA_GRAB_LATEST; // always grab freshest frame, keeps stream snappy
+    config.grab_mode = CAMERA_GRAB_LATEST;
   } else {
-    config.frame_size = FRAMESIZE_QVGA; // 320x240 - use this if stream lags
-    config.jpeg_quality = 15;
+    config.frame_size = FRAMESIZE_QQVGA; // 160x120 - keeps payloads small on boards without PSRAM
+    config.jpeg_quality = 16;
     config.fb_count = 1;
   }
 
@@ -166,17 +105,43 @@ void setup() {
     delay(500);
     Serial.print(".");
   }
-  Serial.println();
+  Serial.println("\nConnected! IP: " + WiFi.localIP().toString());
+  Serial.println("Pushing frames to Supabase...");
+}
 
-  startCameraServer();
+void pushFrame() {
+  camera_fb_t* fb = esp_camera_fb_get();
+  if (!fb) {
+    Serial.println("Camera capture failed");
+    return;
+  }
 
-  Serial.print("Camera ready! Open this in your browser: http://");
-  Serial.println(WiFi.localIP());
-  Serial.print("Direct stream URL: http://");
-  Serial.print(WiFi.localIP());
-  Serial.println("/stream");
+  String b64 = base64::encode(fb->buf, fb->len);
+  esp_camera_fb_return(fb);
+
+  String body = "{\"frame\":\"" + b64 + "\"}";
+
+  HTTPClient http;
+  http.begin(supabaseUrl);
+  http.addHeader("apikey", apiKey);
+  http.addHeader("Authorization", String("Bearer ") + apiKey);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Prefer", "return=minimal");
+
+  int code = http.PATCH(body);
+  if (code != 204 && code != 200) {
+    Serial.println("Upload failed, HTTP code: " + String(code));
+  }
+  http.end();
 }
 
 void loop() {
-  delay(10000); // nothing to do here, streaming happens in the HTTP server task
+  if (WiFi.status() == WL_CONNECTED) {
+    pushFrame();
+  } else {
+    Serial.println("WiFi disconnected, retrying...");
+    delay(1000);
+  }
+  // No extra delay: next capture starts immediately after upload completes.
+  // Real-world fps is limited by JPEG size + network round-trip.
 }
