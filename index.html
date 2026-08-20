@@ -47,7 +47,9 @@
     margin: 0;
     color: var(--accent);
   }
-  #status-dot {
+  .dots { display: flex; gap: 14px; }
+  .dot-group { display: flex; align-items: center; }
+  .status-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
@@ -55,9 +57,9 @@
     display: inline-block;
     margin-right: 6px;
   }
-  #status-dot.ok { background: #3ddc84; box-shadow: 0 0 8px #3ddc84; }
-  #status-dot.err { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
-  #status-text { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .status-dot.ok { background: #3ddc84; box-shadow: 0 0 8px #3ddc84; }
+  .status-dot.err { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+  .status-text { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
 
   .panel {
     width: 100%;
@@ -68,6 +70,63 @@
     padding: 24px;
   }
 
+  .panel + .panel { margin-top: 16px; }
+
+  .panel-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin: 0 0 14px;
+  }
+
+  /* ---- Camera panel ---- */
+  .cam-frame {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: #000;
+    border: 1px solid var(--grid);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+  .cam-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .cam-placeholder {
+    color: var(--text-dim);
+    font-size: 11px;
+    text-align: center;
+    padding: 16px;
+    letter-spacing: 1px;
+  }
+  .cam-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+  }
+  .cam-toolbar button {
+    background: #1a2129;
+    border: 1px solid var(--grid);
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .cam-toolbar button:hover { border-color: var(--accent); color: var(--text); }
+
+  /* ---- Drive panel ---- */
   .dpad {
     display: grid;
     grid-template-columns: repeat(3, 72px);
@@ -170,6 +229,7 @@
     text-transform: uppercase;
     letter-spacing: 1px;
   }
+  .config-section + .config-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--grid); }
   .config button {
     background: var(--accent-dim);
     border: 1px solid var(--accent);
@@ -186,10 +246,26 @@
 
 <header>
   <h1>Rover // Ctl</h1>
-  <div><span id="status-dot"></span><span id="status-text">not configured</span></div>
+  <div class="dots">
+    <div class="dot-group"><span class="status-dot" id="cam-dot"></span><span class="status-text" id="cam-status-text">cam not set</span></div>
+    <div class="dot-group"><span class="status-dot" id="drive-dot"></span><span class="status-text" id="drive-status-text">not configured</span></div>
+  </div>
 </header>
 
 <div class="panel">
+  <p class="panel-label">Live Feed</p>
+  <div class="cam-frame" id="cam-frame">
+    <div class="cam-placeholder" id="cam-placeholder">set camera IP below to start stream</div>
+    <img id="cam-img" style="display:none;">
+  </div>
+  <div class="cam-toolbar">
+    <span class="status-text" id="cam-url-text"></span>
+    <button id="cam-reload">Reload Stream</button>
+  </div>
+</div>
+
+<div class="panel">
+  <p class="panel-label">Drive</p>
   <div class="dpad">
     <button class="fwd" data-dir="forward">▲</button>
     <button class="left" data-dir="left">◀</button>
@@ -209,46 +285,119 @@
 
 <div class="config-toggle" id="config-toggle">configure connection ▾</div>
 <div class="config" id="config">
-  <label>Supabase Project URL</label>
-  <input type="text" id="cfg-url" placeholder="https://xxxxx.supabase.co">
-  <label>Anon / Publishable Key</label>
-  <input type="text" id="cfg-key" placeholder="eyJ... or sb_publishable_...">
+  <div class="config-section">
+    <label>ESP32-CAM Stream URL or IP</label>
+    <input type="text" id="cfg-cam" placeholder="192.168.1.42  or  http://192.168.1.42/stream">
+  </div>
+  <div class="config-section">
+    <label>Supabase Project URL</label>
+    <input type="text" id="cfg-url" placeholder="https://xxxxx.supabase.co">
+    <label>Anon / Publishable Key</label>
+    <input type="text" id="cfg-key" placeholder="eyJ... or sb_publishable_...">
+  </div>
   <button id="cfg-save">Save</button>
 </div>
 
 <script>
-  const dot = document.getElementById('status-dot');
-  const statusText = document.getElementById('status-text');
+  // ---- elements ----
+  const driveDot = document.getElementById('drive-dot');
+  const driveStatusText = document.getElementById('drive-status-text');
+  const camDot = document.getElementById('cam-dot');
+  const camStatusText = document.getElementById('cam-status-text');
+  const camUrlText = document.getElementById('cam-url-text');
   const log = document.getElementById('log');
   const speedSlider = document.getElementById('speed');
   const speedVal = document.getElementById('speed-val');
   const configPanel = document.getElementById('config');
   const configToggle = document.getElementById('config-toggle');
+  const camImg = document.getElementById('cam-img');
+  const camPlaceholder = document.getElementById('cam-placeholder');
+  const camReloadBtn = document.getElementById('cam-reload');
 
+  // ---- persisted config ----
   let SUPA_URL = localStorage.getItem('rover_url') || '';
   let SUPA_KEY = localStorage.getItem('rover_key') || '';
+  let CAM_URL  = localStorage.getItem('rover_cam') || '';
 
   document.getElementById('cfg-url').value = SUPA_URL;
   document.getElementById('cfg-key').value = SUPA_KEY;
+  document.getElementById('cfg-cam').value = CAM_URL;
 
   configToggle.onclick = () => configPanel.classList.toggle('open');
 
   document.getElementById('cfg-save').onclick = () => {
     SUPA_URL = document.getElementById('cfg-url').value.trim().replace(/\/$/, '');
     SUPA_KEY = document.getElementById('cfg-key').value.trim();
+    CAM_URL  = document.getElementById('cfg-cam').value.trim();
+
     localStorage.setItem('rover_url', SUPA_URL);
     localStorage.setItem('rover_key', SUPA_KEY);
+    localStorage.setItem('rover_cam', CAM_URL);
+
     configPanel.classList.remove('open');
-    setStatus('idle', 'configured');
+    if (SUPA_URL && SUPA_KEY) setDriveStatus('idle', 'configured');
+    startCamStream();
   };
 
-  function setStatus(state, text) {
-    dot.className = state === 'ok' ? 'ok' : state === 'err' ? 'err' : '';
-    statusText.textContent = text;
+  function setDriveStatus(state, text) {
+    driveDot.className = 'status-dot ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : '');
+    driveStatusText.textContent = text;
+  }
+  function setCamStatus(state, text) {
+    camDot.className = 'status-dot ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : '');
+    camStatusText.textContent = text;
   }
 
-  if (SUPA_URL && SUPA_KEY) setStatus('idle', 'configured');
+  if (SUPA_URL && SUPA_KEY) setDriveStatus('idle', 'configured');
 
+  // ---- camera stream ----
+  function normalizeCamUrl(raw) {
+    if (!raw) return '';
+    let url = raw.trim();
+    if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+    // if they gave a bare host/IP, point at /stream
+    if (!/\/stream\/?$/i.test(url)) {
+      url = url.replace(/\/$/, '') + '/stream';
+    }
+    return url;
+  }
+
+  function startCamStream() {
+    const url = normalizeCamUrl(CAM_URL);
+    if (!url) {
+      camImg.style.display = 'none';
+      camPlaceholder.style.display = 'block';
+      camPlaceholder.textContent = 'set camera IP below to start stream';
+      setCamStatus('', 'cam not set');
+      camUrlText.textContent = '';
+      return;
+    }
+    camUrlText.textContent = url;
+    setCamStatus('', 'connecting...');
+    camPlaceholder.style.display = 'block';
+    camPlaceholder.textContent = 'connecting to camera...';
+    camImg.style.display = 'none';
+
+    // cache-bust so a reload actually reopens the MJPEG connection
+    camImg.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+  }
+
+  camImg.onload = () => {
+    camPlaceholder.style.display = 'none';
+    camImg.style.display = 'block';
+    setCamStatus('ok', 'streaming');
+  };
+  camImg.onerror = () => {
+    camImg.style.display = 'none';
+    camPlaceholder.style.display = 'block';
+    camPlaceholder.textContent = 'no signal — check camera IP / WiFi';
+    setCamStatus('err', 'unreachable');
+  };
+  camReloadBtn.onclick = startCamStream;
+
+  startCamStream();
+
+  // ---- drive controls ----
   speedSlider.oninput = () => { speedVal.textContent = speedSlider.value; };
 
   async function sendCommand(direction) {
@@ -274,14 +423,14 @@
         })
       });
       if (res.ok) {
-        setStatus('ok', 'connected');
+        setDriveStatus('ok', 'connected');
         log.textContent = `sent: ${direction} @ ${speedSlider.value}`;
       } else {
-        setStatus('err', 'error ' + res.status);
+        setDriveStatus('err', 'error ' + res.status);
         log.textContent = `failed (${res.status}) — check URL/key/RLS policy`;
       }
     } catch (e) {
-      setStatus('err', 'unreachable');
+      setDriveStatus('err', 'unreachable');
       log.textContent = 'network error — check the URL';
     }
   }
