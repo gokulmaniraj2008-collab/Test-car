@@ -237,6 +237,7 @@
     font-size: 12px;
   }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -255,8 +256,8 @@
     <img id="cam-img" style="display:none;">
   </div>
   <div class="cam-toolbar">
-    <span class="status-text" id="cam-url-text"></span>
-    <button id="cam-reload">Reload Stream</button>
+    <span class="status-text" id="cam-url-text">live via supabase realtime</span>
+    <button id="cam-reload">Reconnect</button>
   </div>
 </div>
 
@@ -279,10 +280,6 @@
 
 <div class="config-toggle" id="config-toggle">configure connection ▾</div>
 <div class="config" id="config">
-  <div class="config-section">
-    <label>ESP32-CAM Stream URL or IP</label>
-    <input type="text" id="cfg-cam" placeholder="192.168.1.42  or  http://192.168.1.42/stream">
-  </div>
   <div class="config-section">
     <label>Supabase Project URL</label>
     <input type="text" id="cfg-url" placeholder="https://xxxxx.supabase.co">
@@ -311,26 +308,22 @@
   // ---- persisted config ----
   let SUPA_URL = localStorage.getItem('rover_url') || '';
   let SUPA_KEY = localStorage.getItem('rover_key') || '';
-  let CAM_URL  = localStorage.getItem('rover_cam') || '';
 
   document.getElementById('cfg-url').value = SUPA_URL;
   document.getElementById('cfg-key').value = SUPA_KEY;
-  document.getElementById('cfg-cam').value = CAM_URL;
 
   configToggle.onclick = () => configPanel.classList.toggle('open');
 
   document.getElementById('cfg-save').onclick = () => {
     SUPA_URL = document.getElementById('cfg-url').value.trim().replace(/\/$/, '');
     SUPA_KEY = document.getElementById('cfg-key').value.trim();
-    CAM_URL  = document.getElementById('cfg-cam').value.trim();
 
     localStorage.setItem('rover_url', SUPA_URL);
     localStorage.setItem('rover_key', SUPA_KEY);
-    localStorage.setItem('rover_cam', CAM_URL);
 
     configPanel.classList.remove('open');
     if (SUPA_URL && SUPA_KEY) setDriveStatus('idle', 'configured');
-    startCamStream();
+    connectCamFeed();
   };
 
   function setDriveStatus(state, text) {
@@ -344,52 +337,65 @@
 
   if (SUPA_URL && SUPA_KEY) setDriveStatus('idle', 'configured');
 
-  // ---- camera stream ----
-  function normalizeCamUrl(raw) {
-    if (!raw) return '';
-    let url = raw.trim();
-    if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
-    // if they gave a bare host/IP, point at /stream
-    if (!/\/stream\/?$/i.test(url)) {
-      url = url.replace(/\/$/, '') + '/stream';
-    }
-    return url;
-  }
+  // ---- camera feed (live via Supabase Realtime) ----
+  let sbClient = null;
+  let camChannel = null;
+  let framesReceived = 0;
 
-  function startCamStream() {
-    const url = normalizeCamUrl(CAM_URL);
-    if (!url) {
-      camImg.style.display = 'none';
-      camPlaceholder.style.display = 'block';
-      camPlaceholder.textContent = 'set camera IP below to start stream';
+  function connectCamFeed() {
+    if (!SUPA_URL || !SUPA_KEY) {
+      camPlaceholder.textContent = 'set your Supabase URL + key below';
       setCamStatus('', 'cam not set');
-      camUrlText.textContent = '';
       return;
     }
-    camUrlText.textContent = url;
-    setCamStatus('', 'connecting...');
-    camPlaceholder.style.display = 'block';
-    camPlaceholder.textContent = 'connecting to camera...';
-    camImg.style.display = 'none';
 
-    // cache-bust so a reload actually reopens the MJPEG connection
-    camImg.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+    if (camChannel) {
+      sbClient.removeChannel(camChannel);
+      camChannel = null;
+    }
+
+    camPlaceholder.style.display = 'block';
+    camImg.style.display = 'none';
+    camPlaceholder.textContent = 'connecting to live feed...';
+    setCamStatus('', 'connecting...');
+    framesReceived = 0;
+
+    if (!sbClient) {
+      sbClient = supabase.createClient(SUPA_URL, SUPA_KEY);
+    }
+
+    camChannel = sbClient
+      .channel('car-camera-changes')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'car_camera', filter: 'id=eq.1' },
+        (payload) => {
+          const frame = payload.new && payload.new.frame;
+          if (!frame) return;
+          camImg.src = 'data:image/jpeg;base64,' + frame;
+          camImg.style.display = 'block';
+          camPlaceholder.style.display = 'none';
+          framesReceived++;
+          setCamStatus('ok', 'live');
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setCamStatus('ok', 'connected — waiting for frames');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setCamStatus('err', 'connection error');
+          camPlaceholder.style.display = 'block';
+          camImg.style.display = 'none';
+          camPlaceholder.textContent = 'realtime connection failed — check URL/key';
+        } else if (status === 'CLOSED') {
+          setCamStatus('err', 'disconnected');
+        }
+      });
   }
 
-  camImg.onload = () => {
-    camPlaceholder.style.display = 'none';
-    camImg.style.display = 'block';
-    setCamStatus('ok', 'streaming');
-  };
-  camImg.onerror = () => {
-    camImg.style.display = 'none';
-    camPlaceholder.style.display = 'block';
-    camPlaceholder.textContent = 'no signal — check camera IP / WiFi';
-    setCamStatus('err', 'unreachable');
-  };
-  camReloadBtn.onclick = startCamStream;
+  camReloadBtn.onclick = connectCamFeed;
 
-  startCamStream();
+  connectCamFeed();
 
   // ---- drive controls ----
   speedSlider.oninput = () => { speedVal.textContent = speedSlider.value; };
