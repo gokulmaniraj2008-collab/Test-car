@@ -130,7 +130,7 @@
   .dpad {
     display: grid;
     grid-template-columns: repeat(3, 72px);
-    grid-template-rows: repeat(3, 72px);
+    grid-template-rows: 72px;
     gap: 8px;
     justify-content: center;
     margin-bottom: 24px;
@@ -153,11 +153,7 @@
     border-color: var(--accent);
     transform: scale(0.96);
   }
-  .dpad .fwd { grid-column: 2; grid-row: 1; }
-  .dpad .left { grid-column: 1; grid-row: 2; }
-  .dpad .stop { grid-column: 2; grid-row: 2; color: var(--danger); border-color: var(--danger); }
-  .dpad .right { grid-column: 3; grid-row: 2; }
-  .dpad .back { grid-column: 2; grid-row: 3; }
+  .dpad .stop { color: var(--danger); border-color: var(--danger); }
 
   .speed-row {
     display: flex;
@@ -267,11 +263,9 @@
 <div class="panel">
   <p class="panel-label">Drive</p>
   <div class="dpad">
-    <button class="fwd" data-dir="forward">▲</button>
     <button class="left" data-dir="left">◀</button>
     <button class="stop" data-dir="stop">■</button>
     <button class="right" data-dir="right">▶</button>
-    <button class="back" data-dir="backward">▼</button>
   </div>
 
   <div class="speed-row">
@@ -441,7 +435,7 @@
 
   // keyboard support: arrows to drive, space to stop
   document.addEventListener('keydown', (e) => {
-    const map = { ArrowUp: 'forward', ArrowDown: 'backward', ArrowLeft: 'left', ArrowRight: 'right', ' ': 'stop' };
+    const map = { ArrowLeft: 'left', ArrowRight: 'right', ' ': 'stop' };
     if (map[e.key]) { e.preventDefault(); sendCommand(map[e.key]); }
   });
 </script>
