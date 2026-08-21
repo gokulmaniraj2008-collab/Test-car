@@ -1,458 +1,514 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rover Control</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Rover Control — AGRIBOT-01</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #0d1117;
-    --panel: #151b23;
-    --grid: #1f2733;
-    --accent: #ff8c3c;
-    --accent-dim: #7a4a24;
-    --text: #e6edf3;
-    --text-dim: #6b7683;
-    --danger: #ff4d4d;
+  :root{
+    --bg:#14140f;
+    --panel:#1c1c15;
+    --panel-2:#20201800;
+    --line:#33321f;
+    --line-soft:#282819;
+    --green:#8fa668;
+    --green-dim:#5f6f47;
+    --amber:#d68c33;
+    --amber-dim:#8a5c22;
+    --rust:#c1503b;
+    --text:#ede8d8;
+    --muted:#8a8874;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --disp: 'Space Grotesk', sans-serif;
   }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
     background:
-      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 100% 32px,
-      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 32px 100%,
+      radial-gradient(1200px 600px at 15% -10%, #1e1e14 0%, transparent 60%),
       var(--bg);
-    color: var(--text);
-    font-family: 'Courier New', ui-monospace, monospace;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 24px 16px 48px;
+    color:var(--text);
+    font-family:var(--disp);
+    min-height:100vh;
+    padding:18px;
   }
-  header {
-    width: 100%;
-    max-width: 420px;
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    border-bottom: 1px solid var(--grid);
-    padding-bottom: 12px;
-    margin-bottom: 20px;
-  }
-  h1 {
-    font-size: 15px;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    margin: 0;
-    color: var(--accent);
-  }
-  .dots { display: flex; gap: 14px; }
-  .dot-group { display: flex; align-items: center; }
-  .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-dim);
-    display: inline-block;
-    margin-right: 6px;
-  }
-  .status-dot.ok { background: #3ddc84; box-shadow: 0 0 8px #3ddc84; }
-  .status-dot.err { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
-  .status-text { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .wrap{max-width:1180px;margin:0 auto;}
 
-  .panel {
-    width: 100%;
-    max-width: 420px;
-    background: var(--panel);
-    border: 1px solid var(--grid);
-    border-radius: 4px;
-    padding: 24px;
+  /* ---- Top bar ---- */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 18px;border:1px solid var(--line);border-radius:10px;
+    background:linear-gradient(180deg,#1e1e16,#191912);
+    margin-bottom:14px;flex-wrap:wrap;gap:10px;
+  }
+  .brand{display:flex;align-items:baseline;gap:10px;}
+  .brand h1{font-size:15px;letter-spacing:.14em;margin:0;font-weight:700;color:var(--text);text-transform:uppercase;}
+  .brand .id{font-family:var(--mono);font-size:12px;color:var(--amber);letter-spacing:.06em;}
+  .status-cluster{display:flex;align-items:center;gap:16px;font-family:var(--mono);font-size:11px;color:var(--muted);}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;position:relative;top:-1px;}
+  .dot.on{background:var(--green);box-shadow:0 0 8px 1px var(--green-dim);}
+  .dot.warn{background:var(--amber);box-shadow:0 0 8px 1px var(--amber-dim);}
+  .dot.off{background:var(--rust);box-shadow:0 0 8px 1px #6b2c22;}
+  .pulse{animation:pulse 1.8s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+  /* ---- Layout grid ---- */
+  .grid{display:grid;grid-template-columns:1.5fr 1fr;gap:14px;}
+  @media (max-width:860px){.grid{grid-template-columns:1fr;}}
+
+  .panel{
+    border:1px solid var(--line);border-radius:10px;
+    background:linear-gradient(180deg,#1c1c15,#181811);
+    padding:14px;
+  }
+  .panel h2{
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 12px 0;font-weight:600;
+    display:flex;align-items:center;justify-content:space-between;
   }
 
-  .panel + .panel { margin-top: 16px; }
-
-  .panel-label {
-    font-size: 10px;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    margin: 0 0 14px;
+  /* ---- Camera viewfinder (signature element) ---- */
+  .viewfinder{
+    position:relative;
+    border-radius:4px;
+    padding:10px;
+    background:
+      repeating-linear-gradient(135deg, var(--amber) 0 10px, #1a1a12 10px 20px);
+  }
+  .viewfinder-inner{
+    position:relative;
+    background:#0c0d09;
+    border-radius:2px;
+    overflow:hidden;
+    aspect-ratio:4/3;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .viewfinder-inner img{
+    width:100%;height:100%;object-fit:cover;display:block;
+  }
+  .rivet{position:absolute;width:7px;height:7px;border-radius:50%;background:#0c0d09;border:1px solid #45441f;}
+  .rivet.tl{top:4px;left:4px;} .rivet.tr{top:4px;right:4px;}
+  .rivet.bl{bottom:4px;left:4px;} .rivet.br{bottom:4px;right:4px;}
+  .no-feed{
+    color:var(--muted);font-family:var(--mono);font-size:12px;text-align:center;
+    padding:20px;line-height:1.6;
+  }
+  .no-feed b{color:var(--amber);}
+  .feed-tag{
+    position:absolute;top:8px;left:8px;font-family:var(--mono);font-size:10px;
+    background:rgba(0,0,0,.55);color:var(--green);padding:3px 7px;border-radius:3px;
+    letter-spacing:.08em;border:1px solid var(--line-soft);
   }
 
-  /* ---- Camera panel ---- */
-  .cam-frame {
-    width: 100%;
-    aspect-ratio: 4 / 3;
-    background: #000;
-    border: 1px solid var(--grid);
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    position: relative;
+  /* ---- Telemetry ---- */
+  .tele-row{
+    display:flex;justify-content:space-between;align-items:baseline;
+    padding:7px 0;border-bottom:1px dashed var(--line-soft);
+    font-family:var(--mono);font-size:12.5px;
   }
-  .cam-frame img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-  .cam-placeholder {
-    color: var(--text-dim);
-    font-size: 11px;
-    text-align: center;
-    padding: 16px;
-    letter-spacing: 1px;
-  }
-  .cam-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 12px;
-  }
-  .cam-toolbar button {
-    background: #1a2129;
-    border: 1px solid var(--grid);
-    color: var(--text-dim);
-    font-family: inherit;
-    font-size: 11px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    padding: 6px 12px;
-    border-radius: 3px;
-    cursor: pointer;
-  }
-  .cam-toolbar button:hover { border-color: var(--accent); color: var(--text); }
+  .tele-row:last-child{border-bottom:none;}
+  .tele-row .k{color:var(--muted);letter-spacing:.04em;}
+  .tele-row .v{color:var(--text);font-weight:500;}
+  .tele-row .v.amber{color:var(--amber);}
+  .tele-row .v.green{color:var(--green);}
+  .tele-row .v.rust{color:var(--rust);}
 
-  /* ---- Drive panel ---- */
-  .dpad {
-    display: grid;
-    grid-template-columns: repeat(3, 72px);
-    grid-template-rows: repeat(3, 72px);
-    gap: 8px;
-    justify-content: center;
-    margin-bottom: 24px;
+  /* ---- D-pad ---- */
+  .control-panel{display:flex;gap:18px;flex-wrap:wrap;}
+  .dpad{
+    display:grid;
+    grid-template-columns:52px 52px 52px;
+    grid-template-rows:52px 52px 52px;
+    gap:6px;
   }
-  .dpad .forward { grid-column: 2; grid-row: 1; }
-  .dpad .left { grid-column: 1; grid-row: 2; }
-  .dpad .stop { grid-column: 2; grid-row: 2; }
-  .dpad .right { grid-column: 3; grid-row: 2; }
-  .dpad .backward { grid-column: 2; grid-row: 3; }
-  .dpad button {
-    background: #1a2129;
-    border: 1px solid var(--grid);
-    color: var(--text);
-    font-family: inherit;
-    font-size: 20px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background 0.1s, border-color 0.1s, transform 0.05s;
-    user-select: none;
-    -webkit-user-select: none;
-    touch-action: manipulation;
+  .dbtn{
+    border:1px solid var(--line);background:#20201730;
+    border-radius:6px;color:var(--text);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;user-select:none;-webkit-user-select:none;touch-action:none;
+    transition:background .08s,border-color .08s,transform .06s;
   }
-  .dpad button:active, .dpad button.active {
-    background: var(--accent-dim);
-    border-color: var(--accent);
-    transform: scale(0.96);
-  }
-  .dpad .stop { color: var(--danger); border-color: var(--danger); }
+  .dbtn:hover{border-color:var(--green-dim);}
+  .dbtn:active,.dbtn.active{background:var(--green-dim);border-color:var(--green);transform:scale(.96);}
+  .dbtn:focus-visible{outline:2px solid var(--amber);outline-offset:1px;}
+  .dbtn.stop{background:#3a1f1a;border-color:var(--rust);color:#f2c9bf;}
+  .dbtn.stop:active,.dbtn.stop.active{background:var(--rust);color:#1a0d0a;}
+  .dbtn.ghost{visibility:hidden;}
 
-  .speed-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
+  .speed-block{flex:1;min-width:180px;}
+  .speed-readout{
+    display:flex;justify-content:space-between;font-family:var(--mono);
+    font-size:12px;color:var(--muted);margin-bottom:8px;
   }
-  .speed-row label {
-    font-size: 11px;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    width: 60px;
+  .speed-readout b{color:var(--amber);font-size:15px;}
+  input[type=range]{
+    -webkit-appearance:none;width:100%;height:5px;border-radius:3px;
+    background:linear-gradient(90deg,var(--green-dim),var(--amber-dim));
+    outline:none;
   }
-  input[type="range"] {
-    flex: 1;
-    accent-color: var(--accent);
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+    background:var(--amber);border:2px solid #1a1a12;cursor:pointer;
+    box-shadow:0 0 0 1px var(--line);
   }
-  #speed-val {
-    width: 34px;
-    text-align: right;
-    color: var(--accent);
-    font-size: 13px;
+  input[type=range]::-moz-range-thumb{
+    width:16px;height:16px;border-radius:50%;background:var(--amber);
+    border:2px solid #1a1a12;cursor:pointer;
+  }
+  .kbd-hint{
+    margin-top:10px;font-family:var(--mono);font-size:10.5px;color:var(--muted);
+    letter-spacing:.03em;line-height:1.6;
+  }
+  kbd{
+    background:#0c0d09;border:1px solid var(--line);border-radius:3px;
+    padding:1px 5px;color:var(--green);font-family:var(--mono);
   }
 
-  #log {
-    font-size: 11px;
-    color: var(--text-dim);
-    border-top: 1px solid var(--grid);
-    padding-top: 12px;
-    min-height: 16px;
-  }
+  /* ---- Command log ---- */
+  .log{font-family:var(--mono);font-size:11.5px;max-height:180px;overflow-y:auto;}
+  .log-row{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--line-soft);color:var(--muted);}
+  .log-row .cmd{color:var(--text);min-width:78px;}
+  .log-row .cmd.stop{color:var(--rust);}
+  .log-row .cmd.fwd,.log-row .cmd.back,.log-row .cmd.left,.log-row .cmd.right{color:var(--green);}
+  .log-row .cmd.speed{color:var(--amber);}
+  .log-empty{color:var(--muted);font-family:var(--mono);font-size:11.5px;padding:8px 0;}
 
-  .config-toggle {
-    font-size: 11px;
-    color: var(--text-dim);
-    text-align: right;
-    width: 100%;
-    max-width: 420px;
-    margin-top: 12px;
-    cursor: pointer;
-    text-decoration: underline;
+  .toast{
+    position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+    background:#2a1613;border:1px solid var(--rust);color:#f2c9bf;
+    font-family:var(--mono);font-size:12px;padding:8px 14px;border-radius:6px;
+    opacity:0;pointer-events:none;transition:opacity .25s;z-index:50;
   }
-  .config {
-    width: 100%;
-    max-width: 420px;
-    background: var(--panel);
-    border: 1px solid var(--grid);
-    border-radius: 4px;
-    padding: 16px;
-    margin-top: 8px;
-    display: none;
-  }
-  .config.open { display: block; }
-  .config input {
-    width: 100%;
-    background: #0d1117;
-    border: 1px solid var(--grid);
-    color: var(--text);
-    font-family: inherit;
-    font-size: 12px;
-    padding: 8px;
-    margin-bottom: 8px;
-    border-radius: 3px;
-  }
-  .config label {
-    font-size: 10px;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-  .config-section + .config-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--grid); }
-  .config button {
-    background: var(--accent-dim);
-    border: 1px solid var(--accent);
-    color: var(--text);
-    padding: 8px 16px;
-    border-radius: 3px;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 12px;
-  }
+  .toast.show{opacity:1;}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+<div class="wrap">
 
-<header>
-  <h1>Rover // Ctl</h1>
-  <div class="dots">
-    <div class="dot-group"><span class="status-dot" id="cam-dot"></span><span class="status-text" id="cam-status-text">cam not set</span></div>
-    <div class="dot-group"><span class="status-dot" id="drive-dot"></span><span class="status-text" id="drive-status-text">not configured</span></div>
+  <div class="topbar">
+    <div class="brand">
+      <h1>Rover Control</h1>
+      <span class="id" id="robotName">AGRIBOT&#8209;01</span>
+    </div>
+    <div class="status-cluster">
+      <span><span class="dot" id="linkDot"></span><span id="linkText">connecting…</span></span>
+      <span><span class="dot" id="onlineDot"></span><span id="onlineText">unknown</span></span>
+      <span id="lastSeen">last seen —</span>
+    </div>
   </div>
-</header>
 
-<div class="panel">
-  <p class="panel-label">Live Feed</p>
-  <div class="cam-frame" id="cam-frame">
-    <div class="cam-placeholder" id="cam-placeholder">set camera IP below to start stream</div>
-    <img id="cam-img" style="display:none;">
-  </div>
-  <div class="cam-toolbar">
-    <span class="status-text" id="cam-url-text">live via supabase realtime</span>
-    <button id="cam-reload">Reconnect</button>
+  <div class="grid">
+    <!-- LEFT COLUMN -->
+    <div style="display:flex;flex-direction:column;gap:14px;">
+
+      <div class="panel">
+        <h2>Camera Feed</h2>
+        <div class="viewfinder">
+          <div class="viewfinder-inner" id="viewfinderInner">
+            <div class="no-feed" id="noFeed">NO CAMERA STREAM<br><b>camera_ip</b> is not set on robot_status.<br>Point your cam device at this field to go live.</div>
+            <img id="camImg" style="display:none;" alt="Rover camera feed" />
+          </div>
+          <span class="rivet tl"></span><span class="rivet tr"></span>
+          <span class="rivet bl"></span><span class="rivet br"></span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Drive Controls</h2>
+        <div class="control-panel">
+          <div class="dpad">
+            <div class="dbtn ghost"></div>
+            <div class="dbtn" id="btn-forward" data-cmd="forward" tabindex="0" aria-label="Forward">&#9650;</div>
+            <div class="dbtn ghost"></div>
+
+            <div class="dbtn" id="btn-left" data-cmd="left" tabindex="0" aria-label="Left">&#9664;</div>
+            <div class="dbtn stop" id="btn-stop" data-cmd="stop" tabindex="0" aria-label="Stop">&#9632;</div>
+            <div class="dbtn" id="btn-right" data-cmd="right" tabindex="0" aria-label="Right">&#9654;</div>
+
+            <div class="dbtn ghost"></div>
+            <div class="dbtn" id="btn-backward" data-cmd="backward" tabindex="0" aria-label="Backward">&#9660;</div>
+            <div class="dbtn ghost"></div>
+          </div>
+
+          <div class="speed-block">
+            <div class="speed-readout"><span>SPEED (PWM)</span><b id="speedVal">180</b></div>
+            <input type="range" min="0" max="255" step="1" value="180" id="speedSlider" />
+            <div class="kbd-hint">
+              <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to drive · release to stop<br>
+              <kbd>space</kbd> emergency stop
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="panel">
+        <h2>Telemetry</h2>
+        <div class="tele-row"><span class="k">Mode</span><span class="v" id="t-mode">—</span></div>
+        <div class="tele-row"><span class="k">Motor state</span><span class="v" id="t-motor">—</span></div>
+        <div class="tele-row"><span class="k">Commanded speed</span><span class="v" id="t-speed">—</span></div>
+        <div class="tele-row"><span class="k">Pump</span><span class="v" id="t-pump">—</span></div>
+        <div class="tele-row"><span class="k">GPS fix</span><span class="v" id="t-gps">—</span></div>
+        <div class="tele-row"><span class="k">Battery</span><span class="v" id="t-batt">—</span></div>
+        <div class="tele-row"><span class="k">Soil moisture</span><span class="v" id="t-soil">—</span></div>
+        <div class="tele-row"><span class="k">Temp / humidity</span><span class="v" id="t-temp">—</span></div>
+        <div class="tele-row"><span class="k">Obstacle distance</span><span class="v" id="t-dist">—</span></div>
+        <div class="tele-row"><span class="k">Safety stop</span><span class="v" id="t-safety">—</span></div>
+        <div class="tele-row"><span class="k">Last fault</span><span class="v" id="t-fault">none</span></div>
+      </div>
+
+      <div class="panel">
+        <h2>Recent Commands</h2>
+        <div class="log" id="cmdLog"><div class="log-empty">waiting for commands…</div></div>
+      </div>
+    </div>
   </div>
 </div>
 
-<div class="panel">
-  <p class="panel-label">Drive</p>
-  <div class="dpad">
-    <button class="forward" data-dir="forward">▲</button>
-    <button class="left" data-dir="left">◀</button>
-    <button class="stop" data-dir="stop">■</button>
-    <button class="right" data-dir="right">▶</button>
-    <button class="backward" data-dir="backward">▼</button>
-  </div>
+<div class="toast" id="toast"></div>
 
-  <div class="speed-row">
-    <label>Speed</label>
-    <input type="range" id="speed" min="0" max="255" value="150">
-    <span id="speed-val">150</span>
-  </div>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-  <div id="log">ready.</div>
-</div>
+const SUPABASE_URL = 'https://hvnasippwadzygnaodpp.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2bmFzaXBwd2FkenlnbmFvZHBwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5Mjg3NDMsImV4cCI6MjA5MTUwNDc0M30.dcS0J77idvjkwNesRJS7C-LfmhSDlILASMK65AesRaM';
+const ROBOT_ID = 'agribot-01';
 
-<div class="config-toggle" id="config-toggle">configure connection ▾</div>
-<div class="config" id="config">
-  <div class="config-section">
-    <label>Supabase Project URL</label>
-    <input type="text" id="cfg-url" placeholder="https://xxxxx.supabase.co">
-    <label>Anon / Publishable Key</label>
-    <input type="text" id="cfg-key" placeholder="eyJ... or sb_publishable_...">
-  </div>
-  <button id="cfg-save">Save</button>
-</div>
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  realtime: { params: { eventsPerSecond: 10 } }
+});
 
-<script>
-  // ---- elements ----
-  const driveDot = document.getElementById('drive-dot');
-  const driveStatusText = document.getElementById('drive-status-text');
-  const camDot = document.getElementById('cam-dot');
-  const camStatusText = document.getElementById('cam-status-text');
-  const camUrlText = document.getElementById('cam-url-text');
-  const log = document.getElementById('log');
-  const speedSlider = document.getElementById('speed');
-  const speedVal = document.getElementById('speed-val');
-  const configPanel = document.getElementById('config');
-  const configToggle = document.getElementById('config-toggle');
-  const camImg = document.getElementById('cam-img');
-  const camPlaceholder = document.getElementById('cam-placeholder');
-  const camReloadBtn = document.getElementById('cam-reload');
+const $ = (id) => document.getElementById(id);
 
-  // ---- persisted config ----
-  let SUPA_URL = localStorage.getItem('rover_url') || '';
-  let SUPA_KEY = localStorage.getItem('rover_key') || '';
+// ---------- Toast ----------
+let toastTimer = null;
+function toast(msg){
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 2600);
+}
 
-  document.getElementById('cfg-url').value = SUPA_URL;
-  document.getElementById('cfg-key').value = SUPA_KEY;
+// ---------- Link status ----------
+function setLink(state){ // 'connecting' | 'up' | 'down'
+  const dot = $('linkDot'), text = $('linkText');
+  dot.className = 'dot ' + (state==='up' ? 'on' : state==='down' ? 'off pulse' : 'warn pulse');
+  text.textContent = state==='up' ? 'supabase link ok' : state==='down' ? 'link lost' : 'connecting…';
+}
 
-  configToggle.onclick = () => configPanel.classList.toggle('open');
-
-  document.getElementById('cfg-save').onclick = () => {
-    SUPA_URL = document.getElementById('cfg-url').value.trim().replace(/\/$/, '');
-    SUPA_KEY = document.getElementById('cfg-key').value.trim();
-
-    localStorage.setItem('rover_url', SUPA_URL);
-    localStorage.setItem('rover_key', SUPA_KEY);
-
-    configPanel.classList.remove('open');
-    if (SUPA_URL && SUPA_KEY) setDriveStatus('idle', 'configured');
-    connectCamFeed();
-  };
-
-  function setDriveStatus(state, text) {
-    driveDot.className = 'status-dot ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : '');
-    driveStatusText.textContent = text;
+// ---------- Online / staleness ----------
+let lastUpdatedAt = null;
+function renderOnline(online){
+  const dot = $('onlineDot'), text = $('onlineText');
+  if (online === true){ dot.className='dot on'; text.textContent='online'; }
+  else if (online === false){ dot.className='dot off'; text.textContent='offline'; }
+  else { dot.className='dot warn'; text.textContent='unknown'; }
+}
+function tickLastSeen(){
+  const el = $('lastSeen');
+  if (!lastUpdatedAt){ el.textContent = 'last seen —'; return; }
+  const secs = Math.floor((Date.now() - lastUpdatedAt.getTime())/1000);
+  el.textContent = `last seen ${secs}s ago`;
+  const dot = $('onlineDot');
+  if (secs > 30 && dot.classList.contains('on')){
+    dot.className = 'dot warn';
+    $('onlineText').textContent = 'stale';
   }
-  function setCamStatus(state, text) {
-    camDot.className = 'status-dot ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : '');
-    camStatusText.textContent = text;
+}
+setInterval(tickLastSeen, 1000);
+
+// ---------- Status rendering ----------
+function fmt(v, suffix=''){ return (v===null || v===undefined) ? '—' : `${v}${suffix}`; }
+
+function renderStatus(row){
+  if (!row) return;
+  renderOnline(row.online);
+  if (row.updated_at) lastUpdatedAt = new Date(row.updated_at);
+  $('robotName').textContent = (row.name || ROBOT_ID).toUpperCase();
+  $('t-mode').textContent = fmt(row.mode);
+  $('t-motor').textContent = fmt(row.motor_state);
+  $('t-speed').textContent = fmt(row.speed_value);
+  $('t-pump').textContent = row.pump_status===null||row.pump_status===undefined ? '—' : (row.pump_status ? 'ON' : 'off');
+  $('t-pump').className = 'v' + (row.pump_status ? ' green' : '');
+  $('t-gps').textContent = row.gps_fix===null||row.gps_fix===undefined ? '—' : (row.gps_fix ? `fix (${fmt(row.gps_satellites)} sat)` : 'no fix');
+  $('t-gps').className = 'v' + (row.gps_fix ? ' green' : ' amber');
+  $('t-safety').textContent = row.safety_stopped===null||row.safety_stopped===undefined ? '—' : (row.safety_stopped ? 'STOPPED' : 'clear');
+  $('t-safety').className = 'v' + (row.safety_stopped ? ' rust' : ' green');
+  $('t-fault').textContent = row.last_fault || 'none';
+  $('t-fault').className = 'v' + (row.last_fault ? ' rust' : '');
+
+  // camera
+  const img = $('camImg'), noFeed = $('noFeed');
+  if (row.camera_ip){
+    img.src = row.camera_ip;
+    img.style.display = 'block';
+    noFeed.style.display = 'none';
+    if (!document.getElementById('feedTag')){
+      const tag = document.createElement('span');
+      tag.id = 'feedTag'; tag.className = 'feed-tag'; tag.textContent = 'LIVE';
+      $('viewfinderInner').appendChild(tag);
+    }
+  } else {
+    img.style.display = 'none';
+    noFeed.style.display = 'block';
+    const tag = document.getElementById('feedTag');
+    if (tag) tag.remove();
   }
+}
 
-  if (SUPA_URL && SUPA_KEY) setDriveStatus('idle', 'configured');
+function renderSensor(row){
+  if (!row) return;
+  $('t-batt').textContent = row.battery_percent!=null ? `${row.battery_percent}% (${fmt(row.battery_voltage)}V)` : '—';
+  $('t-batt').className = 'v' + (row.battery_percent!=null && row.battery_percent < 20 ? ' rust' : '');
+  $('t-soil').textContent = row.soil_moisture!=null ? `${row.soil_moisture}%` : '—';
+  $('t-temp').textContent = (row.temperature!=null || row.humidity!=null) ? `${fmt(row.temperature,'°C')} / ${fmt(row.humidity,'%')}` : '—';
+  $('t-dist').textContent = row.distance_cm!=null ? `${row.distance_cm} cm` : '—';
+}
 
-  // ---- camera feed (live via Supabase Realtime) ----
-  let sbClient = null;
-  let camChannel = null;
-  let framesReceived = 0;
+// ---------- Command log ----------
+const logEl = $('cmdLog');
+const cmdClass = { forward:'fwd', backward:'back', left:'left', right:'right', stop:'stop', set_speed:'speed' };
+function prependLog(row){
+  if (logEl.querySelector('.log-empty')) logEl.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'log-row';
+  const t = row.created_at ? new Date(row.created_at) : new Date();
+  const time = t.toLocaleTimeString();
+  const cls = cmdClass[row.command] || '';
+  div.innerHTML = `<span>${time}</span><span class="cmd ${cls}">${row.command}${row.value!=null ? ' '+row.value : ''}</span>`;
+  logEl.prepend(div);
+  while (logEl.children.length > 12) logEl.removeChild(logEl.lastChild);
+}
 
-  function connectCamFeed() {
-    if (!SUPA_URL || !SUPA_KEY) {
-      camPlaceholder.textContent = 'set your Supabase URL + key below';
-      setCamStatus('', 'cam not set');
-      return;
-    }
+// ---------- Initial fetch ----------
+async function loadInitial(){
+  const { data: statusRows, error: statusErr } = await supabase
+    .from('robot_status').select('*').eq('robot_id', ROBOT_ID).limit(1);
+  if (statusErr) toast('status read failed: ' + statusErr.message);
+  if (statusRows && statusRows[0]) renderStatus(statusRows[0]);
 
-    if (camChannel) {
-      sbClient.removeChannel(camChannel);
-      camChannel = null;
-    }
+  const { data: sensorRows } = await supabase
+    .from('sensor_data').select('*').eq('robot_id', ROBOT_ID)
+    .order('created_at', { ascending:false }).limit(1);
+  if (sensorRows && sensorRows[0]) renderSensor(sensorRows[0]);
 
-    camPlaceholder.style.display = 'block';
-    camImg.style.display = 'none';
-    camPlaceholder.textContent = 'connecting to live feed...';
-    setCamStatus('', 'connecting...');
-    framesReceived = 0;
+  const { data: cmdRows } = await supabase
+    .from('robot_commands').select('*').eq('robot_id', ROBOT_ID)
+    .order('created_at', { ascending:false }).limit(8);
+  if (cmdRows) cmdRows.slice().reverse().forEach(prependLog);
+}
+loadInitial();
 
-    if (!sbClient) {
-      sbClient = supabase.createClient(SUPA_URL, SUPA_KEY);
-    }
-
-    camChannel = sbClient
-      .channel('car-camera-changes')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'car_camera', filter: 'id=eq.1' },
-        (payload) => {
-          const frame = payload.new && payload.new.frame;
-          if (!frame) return;
-          camImg.src = 'data:image/jpeg;base64,' + frame;
-          camImg.style.display = 'block';
-          camPlaceholder.style.display = 'none';
-          framesReceived++;
-          setCamStatus('ok', 'live');
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          setCamStatus('ok', 'connected — waiting for frames');
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setCamStatus('err', 'connection error');
-          camPlaceholder.style.display = 'block';
-          camImg.style.display = 'none';
-          camPlaceholder.textContent = 'realtime connection failed — check URL/key';
-        } else if (status === 'CLOSED') {
-          setCamStatus('err', 'disconnected');
-        }
-      });
-  }
-
-  camReloadBtn.onclick = connectCamFeed;
-
-  connectCamFeed();
-
-  // ---- drive controls ----
-  speedSlider.oninput = () => { speedVal.textContent = speedSlider.value; };
-
-  async function sendCommand(direction) {
-    if (!SUPA_URL || !SUPA_KEY) {
-      log.textContent = 'set your Supabase URL + key first (below)';
-      configPanel.classList.add('open');
-      return;
-    }
-    log.textContent = `sending: ${direction}...`;
-    try {
-      const res = await fetch(`${SUPA_URL}/rest/v1/car_commands?id=eq.1`, {
-        method: 'PATCH',
-        headers: {
-          'apikey': SUPA_KEY,
-          'Authorization': `Bearer ${SUPA_KEY}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify({
-          direction: direction,
-          speed: parseInt(speedSlider.value, 10),
-          updated_at: new Date().toISOString()
-        })
-      });
-      if (res.ok) {
-        setDriveStatus('ok', 'connected');
-        log.textContent = `sent: ${direction} @ ${speedSlider.value}`;
-      } else {
-        setDriveStatus('err', 'error ' + res.status);
-        log.textContent = `failed (${res.status}) — check URL/key/RLS policy`;
-      }
-    } catch (e) {
-      setDriveStatus('err', 'unreachable');
-      log.textContent = 'network error — check the URL';
-    }
-  }
-
-  document.querySelectorAll('.dpad button').forEach(btn => {
-    btn.addEventListener('click', () => sendCommand(btn.dataset.dir));
+// ---------- Realtime ----------
+const channel = supabase.channel('rover-dashboard')
+  .on('postgres_changes', { event:'*', schema:'public', table:'robot_status', filter:`robot_id=eq.${ROBOT_ID}` },
+    (payload)=>renderStatus(payload.new))
+  .on('postgres_changes', { event:'INSERT', schema:'public', table:'sensor_data', filter:`robot_id=eq.${ROBOT_ID}` },
+    (payload)=>renderSensor(payload.new))
+  .on('postgres_changes', { event:'INSERT', schema:'public', table:'robot_commands', filter:`robot_id=eq.${ROBOT_ID}` },
+    (payload)=>prependLog(payload.new))
+  .subscribe((status)=>{
+    if (status === 'SUBSCRIBED') setLink('up');
+    else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') setLink('down');
+    else setLink('connecting');
   });
 
-  // keyboard support: arrows to drive, space to stop
-  document.addEventListener('keydown', (e) => {
-    const map = { ArrowUp: 'forward', ArrowDown: 'backward', ArrowLeft: 'left', ArrowRight: 'right', ' ': 'stop' };
-    if (map[e.key]) { e.preventDefault(); sendCommand(map[e.key]); }
+// Fallback poll in case realtime drops silently
+setInterval(loadInitial, 15000);
+
+// ---------- Sending commands ----------
+let currentSpeed = 180;
+let lastCommand = null;
+
+async function sendCommand(command, value=null){
+  lastCommand = command;
+  const { error } = await supabase.from('robot_commands').insert({
+    robot_id: ROBOT_ID, command, value
   });
+  if (error) toast(`command failed: ${error.message}`);
+}
+
+let speedThrottle = 0;
+function sendSpeedThrottled(v){
+  currentSpeed = v;
+  $('speedVal').textContent = v;
+  const now = Date.now();
+  if (now - speedThrottle > 250){
+    speedThrottle = now;
+    sendCommand('set_speed', v);
+  }
+}
+
+
+// ---------- D-pad pointer handling ----------
+const dirButtons = ['forward','backward','left','right'].map(d => $('btn-'+d));
+const stopButton = $('btn-stop');
+
+function pressStart(el, cmd){
+  el.classList.add('active');
+  sendCommand(cmd);
+}
+function pressEnd(el){
+  if (!el.classList.contains('active')) return;
+  el.classList.remove('active');
+  sendCommand('stop');
+}
+
+dirButtons.forEach(el=>{
+  const cmd = el.dataset.cmd;
+  el.addEventListener('pointerdown', (e)=>{ e.preventDefault(); pressStart(el, cmd); });
+  el.addEventListener('pointerup', ()=>pressEnd(el));
+  el.addEventListener('pointerleave', ()=>pressEnd(el));
+  el.addEventListener('pointercancel', ()=>pressEnd(el));
+  el.addEventListener('keydown', (e)=>{
+    if ((e.key==='Enter' || e.key===' ') && !el.classList.contains('active')){ e.preventDefault(); pressStart(el, cmd); }
+  });
+  el.addEventListener('keyup', (e)=>{
+    if (e.key==='Enter' || e.key===' '){ e.preventDefault(); pressEnd(el); }
+  });
+});
+stopButton.addEventListener('pointerdown', (e)=>{ e.preventDefault(); stopButton.classList.add('active'); sendCommand('stop'); setTimeout(()=>stopButton.classList.remove('active'),150); });
+stopButton.addEventListener('keydown', (e)=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); sendCommand('stop'); }});
+
+// ---------- Speed slider ----------
+const slider = $('speedSlider');
+slider.addEventListener('input', (e)=>sendSpeedThrottled(Number(e.target.value)));
+slider.addEventListener('change', (e)=>sendCommand('set_speed', Number(e.target.value)));
+
+// ---------- Keyboard driving ----------
+const keyMap = { 'w':'forward','arrowup':'forward', 's':'backward','arrowdown':'backward',
+                 'a':'left','arrowleft':'left', 'd':'right','arrowright':'right' };
+const activeKeys = new Set();
+
+window.addEventListener('keydown', (e)=>{
+  const k = e.key.toLowerCase();
+  if (k === ' '){ e.preventDefault(); sendCommand('stop'); return; }
+  const cmd = keyMap[k];
+  if (!cmd || e.repeat || activeKeys.has(k)) return;
+  const target = document.activeElement;
+  if (target && (target.tagName==='INPUT')) return; // don't hijack slider focus
+  activeKeys.add(k);
+  const btn = $('btn-'+cmd);
+  btn.classList.add('active');
+  sendCommand(cmd);
+});
+window.addEventListener('keyup', (e)=>{
+  const k = e.key.toLowerCase();
+  const cmd = keyMap[k];
+  if (!cmd) return;
+  activeKeys.delete(k);
+  $('btn-'+cmd).classList.remove('active');
+  if (activeKeys.size === 0) sendCommand('stop');
+});
+window.addEventListener('blur', ()=>{
+  if (activeKeys.size){ activeKeys.clear(); dirButtons.forEach(b=>b.classList.remove('active')); sendCommand('stop'); }
+});
 </script>
-
 </body>
-  </html>
-  
+</html>
