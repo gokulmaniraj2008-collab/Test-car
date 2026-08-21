@@ -32,6 +32,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <WebServer.h>
 #include <ArduinoJson.h>
 #include <DHT.h>
 #include <TinyGPSPlus.h>
@@ -108,6 +109,7 @@ const unsigned long CMD_TIMEOUT_MS          = 800;    // stop driving if no comm
 DHT dht(PIN_DHT, DHTTYPE);
 HardwareSerial GPSSerial(2);
 TinyGPSPlus gps;
+WebServer localServer(80);   // on-board control page — open the ESP32's IP in a browser
 
 String lastCommandId = "";      // last robot_commands row id we've already executed
 String currentMode   = "manual";
@@ -151,6 +153,7 @@ void setup() {
   stopMotors();
   connectWiFi();
   systemSelfCheck();
+  startLocalServer();
 
   lastCmdReceivedAt = millis();
   pushStatus(true /*forceOnline*/);
@@ -163,6 +166,8 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED) {
     connectWiFi();
   }
+
+  localServer.handleClient();
 
   unsigned long now = millis();
 
@@ -219,8 +224,11 @@ void connectWiFi() {
   }
   Serial.println();
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.print("[WiFi] Connected, IP: ");
+    Serial.println("========================================");
+    Serial.print("  AGRIBOT CONTROL PAGE: http://");
     Serial.println(WiFi.localIP());
+    Serial.println("  Open that address in a browser to drive.");
+    Serial.println("========================================");
   } else {
     Serial.println("[WiFi] Failed to connect, will retry in loop.");
   }
@@ -247,6 +255,90 @@ void driveForward()  { setMotors(true, false, true, false, currentSpeed);  curre
 void driveBackward() { setMotors(false, true, false, true, currentSpeed);  currentMotorState = "backward"; }
 void driveLeft()      { setMotors(false, true, true, false, currentSpeed); currentMotorState = "left";     }
 void driveRight()     { setMotors(true, false, false, true, currentSpeed); currentMotorState = "right";    }
+
+// ====================================================================================
+// Local web control page — served directly by the ESP32, no Supabase needed
+// Open the IP printed on boot (e.g. http://192.168.1.50) in a browser.
+// ====================================================================================
+const char LOCAL_CONTROL_PAGE[] PROGMEM = R"HTML(
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AGRIBOT Control</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; background: #111; color: #eee; margin: 0; padding: 20px; }
+    h2 { margin-bottom: 4px; }
+    .status { color: #8f8; font-size: 14px; margin-bottom: 20px; }
+    .pad { display: grid; grid-template-columns: 80px 80px 80px; grid-gap: 10px; justify-content: center; margin-bottom: 20px; }
+    button { font-size: 20px; padding: 20px 0; border-radius: 10px; border: none; background: #2a2a2a; color: #fff; }
+    button:active { background: #4caf50; }
+    .stop { background: #a33; }
+    .pump { font-size: 16px; padding: 15px 25px; border-radius: 10px; border: none; margin: 5px; }
+    .pump-on { background: #2a7; color: #fff; }
+    .pump-off { background: #555; color: #fff; }
+  </style>
+</head>
+<body>
+  <h2>AGRIBOT-01</h2>
+  <div class="status" id="st">loading...</div>
+  <div class="pad">
+    <div></div><button onclick="cmd('forward')">&#8593;</button><div></div>
+    <button onclick="cmd('left')">&#8592;</button>
+    <button class="stop" onclick="cmd('stop')">STOP</button>
+    <button onclick="cmd('right')">&#8594;</button>
+    <div></div><button onclick="cmd('backward')">&#8595;</button><div></div>
+  </div>
+  <div>
+    <button class="pump pump-on" onclick="cmd('pump_on')">Pump ON</button>
+    <button class="pump pump-off" onclick="cmd('pump_off')">Pump OFF</button>
+  </div>
+  <script>
+    function cmd(c) {
+      fetch('/cmd?action=' + c).then(r => r.text()).then(t => document.getElementById('st').innerText = t);
+    }
+    document.getElementById('st').innerText = 'ready';
+  </script>
+</body>
+</html>
+)HTML";
+
+void handleLocalRoot() {
+  localServer.send(200, "text/html", LOCAL_CONTROL_PAGE);
+}
+
+void handleLocalCmd() {
+  if (!localServer.hasArg("action")) {
+    localServer.send(400, "text/plain", "missing action");
+    return;
+  }
+  String action = localServer.arg("action");
+  lastCmdReceivedAt = millis(); // counts as a live command, resets the watchdog
+
+  if (safetyStopped && action == "forward") {
+    localServer.send(200, "text/plain", "blocked: obstacle");
+    return;
+  }
+
+  if (action == "forward")       driveForward();
+  else if (action == "backward") driveBackward();
+  else if (action == "left")     driveLeft();
+  else if (action == "right")    driveRight();
+  else if (action == "stop")     stopMotors();
+  else if (action == "pump_on")  { pumpOn = true;  digitalWrite(PIN_PUMP, HIGH); }
+  else if (action == "pump_off") { pumpOn = false; digitalWrite(PIN_PUMP, LOW);  }
+  else { localServer.send(400, "text/plain", "unknown action"); return; }
+
+  pushStatus(false); // keep the Supabase dashboard in sync too
+  localServer.send(200, "text/plain", "ok: " + action + " | mode: " + currentMotorState);
+}
+
+void startLocalServer() {
+  localServer.on("/", handleLocalRoot);
+  localServer.on("/cmd", handleLocalCmd);
+  localServer.begin();
+  Serial.println("[WEB] Local control server started on port 80.");
+}
 
 // ====================================================================================
 // Sensors
@@ -400,6 +492,7 @@ void executeCommand(const String& command, JsonVariant value) {
 
   pushStatus(false); // reflect the new state promptly
 }
+
 
 // ====================================================================================
 // Supabase — upsert robot_status
