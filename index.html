@@ -130,11 +130,16 @@
   .dpad {
     display: grid;
     grid-template-columns: repeat(3, 72px);
-    grid-template-rows: 72px;
+    grid-template-rows: repeat(3, 72px);
     gap: 8px;
     justify-content: center;
     margin-bottom: 24px;
   }
+  .dpad .forward { grid-column: 2; grid-row: 1; }
+  .dpad .left { grid-column: 1; grid-row: 2; }
+  .dpad .stop { grid-column: 2; grid-row: 2; }
+  .dpad .right { grid-column: 3; grid-row: 2; }
+  .dpad .backward { grid-column: 2; grid-row: 3; }
   .dpad button {
     background: #1a2129;
     border: 1px solid var(--grid);
@@ -264,9 +269,11 @@
 <div class="panel">
   <p class="panel-label">Drive</p>
   <div class="dpad">
+    <button class="forward" data-dir="forward">▲</button>
     <button class="left" data-dir="left">◀</button>
     <button class="stop" data-dir="stop">■</button>
     <button class="right" data-dir="right">▶</button>
+    <button class="backward" data-dir="backward">▼</button>
   </div>
 
   <div class="speed-row">
@@ -441,10 +448,11 @@
 
   // keyboard support: arrows to drive, space to stop
   document.addEventListener('keydown', (e) => {
-    const map = { ArrowLeft: 'left', ArrowRight: 'right', ' ': 'stop' };
+    const map = { ArrowUp: 'forward', ArrowDown: 'backward', ArrowLeft: 'left', ArrowRight: 'right', ' ': 'stop' };
     if (map[e.key]) { e.preventDefault(); sendCommand(map[e.key]); }
   });
 </script>
 
 </body>
-</html>
+  </html>
+  
